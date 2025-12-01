@@ -868,18 +868,18 @@ class BoletoPDF(object):
         y = page_height - margem_superior_primeira_via
 
         # Desce um pouco para começar o conteúdo
-        y -= 5 * mm
+        y -= 10 * mm
 
         # Desenha a Ficha de Compensação completa (logo + linha digitável + código de barras)
         _, altura_usada = self._drawReciboCaixa(boleto_dados, margem_esquerda, y, barcode=False)
 
-        y -= 10 * mm
+        y += 5 * mm
 
         self._drawHorizontalCorteLine(margem_esquerda, y, self.width)
 
         y_segunda_via = y - altura_usada - espaco_entre_vias
 
-        y_segunda_via += 3 * mm
+        y_segunda_via += 5 * mm
 
         self._drawReciboCaixa(boleto_dados, margem_esquerda, y_segunda_via)
 
