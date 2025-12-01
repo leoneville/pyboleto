@@ -495,6 +495,8 @@ class BoletoData(object):
 
     @staticmethod
     def modulo10(num):
+        num = num.replace(' ', '')
+
         if not isinstance(num, str):
             raise TypeError
         soma = 0
@@ -520,6 +522,8 @@ class BoletoData(object):
 
     @staticmethod
     def modulo11(num, base=9, r=0):
+        num = num.replace(' ', '')
+
         if not isinstance(num, str):
             raise TypeError
         soma = 0
