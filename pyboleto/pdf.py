@@ -848,6 +848,45 @@ class BoletoPDF(object):
                              boleto_dados.numero_documento)
         self.pdf_canvas.setTitle(title)
         return (self.width, y)
+    
+    def drawBoletoDuasVias(self, boleto_dados):
+        """
+        Imprime DUAS VIAS do boleto na mesma página A4 (uma em cima da outra),
+        separadas por linha de corte horizontal tracejada.
+        """
+        _, page_height = A4
+
+        # Margens
+        margem_esquerda = 9 * mm
+        margem_superior_primeira_via = 100 * mm   # distância do topo da página até a 1ª via
+        espaco_entre_vias = 15 * mm              # espaço + linha de corte
+
+        # ============================
+        # PRIMEIRA VIA (parte de cima)
+        # ============================
+        y = page_height - margem_superior_primeira_via
+
+        # Desce um pouco para começar o conteúdo
+        y -= 5 * mm
+
+        # Desenha a Ficha de Compensação completa (logo + linha digitável + código de barras)
+        _, altura_usada = self._drawReciboCaixa(boleto_dados, margem_esquerda, y)
+
+        y -= 10 * mm
+
+        self._drawHorizontalCorteLine(margem_esquerda, y, self.width)
+
+        y_segunda_via = y - altura_usada - espaco_entre_vias
+
+        y_segunda_via += 3 * mm
+
+        self._drawReciboCaixa(boleto_dados, margem_esquerda, y_segunda_via)
+
+        # Título do PDF
+        title = f"{boleto_dados.sacado[0]} - {boleto_dados.numero_documento}"
+        self.pdf_canvas.setTitle(title)
+
+        return (self.width, page_height)
 
     def nextPage(self):
         """Força início de nova página"""
