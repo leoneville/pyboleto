@@ -881,7 +881,7 @@ class BoletoPDF(object):
 
         y_segunda_via += 3 * mm
 
-        self._drawReciboCaixa(boleto_dados, margem_esquerda, y_segunda_via)
+        self._drawReciboCaixa(boleto_dados, margem_esquerda, y_segunda_via, barcode=False)
 
         # Título do PDF
         title = f"{boleto_dados.sacado[0]} - {boleto_dados.numero_documento}"
