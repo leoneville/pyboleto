@@ -422,7 +422,7 @@ class BoletoPDF(object):
 
         self.pdf_canvas.restoreState()
 
-    def _drawReciboCaixa(self, boleto_dados, x, y):
+    def _drawReciboCaixa(self, boleto_dados, x, y, barcode=True):
         """Imprime o Recibo do Caixa
 
         :param boleto_dados: Objeto com os dados do boleto a ser preenchido.
@@ -775,7 +775,8 @@ class BoletoPDF(object):
         )
 
         # Codigo de barras
-        self._codigoBarraI25(boleto_dados.barcode, 2 * self.space, 0)
+        if barcode:
+            self._codigoBarraI25(boleto_dados.barcode, 2 * self.space, 0)
 
         self.pdf_canvas.restoreState()
 
@@ -870,7 +871,7 @@ class BoletoPDF(object):
         y -= 5 * mm
 
         # Desenha a Ficha de Compensação completa (logo + linha digitável + código de barras)
-        _, altura_usada = self._drawReciboCaixa(boleto_dados, margem_esquerda, y)
+        _, altura_usada = self._drawReciboCaixa(boleto_dados, margem_esquerda, y, barcode=False)
 
         y -= 10 * mm
 
