@@ -782,7 +782,7 @@ class BoletoPDF(object):
 
         return self.width, (y + self.height_line)
 
-    def drawBoletoCarneDuplo(self, boletoDados1, boletoDados2=None):
+    def drawBoletoCarneDuplo(self, boletoDados1, boletoDados2=None, y=-1 * mm):
         """Imprime um boleto tipo carnê com 2 boletos por página.
 
         :param boletoDados1: Objeto com os dados do boleto a ser preenchido.
@@ -793,7 +793,6 @@ class BoletoPDF(object):
         :type boletoDados2: :class:`pyboleto.data.BoletoData`
 
         """
-        y = 5 * mm
         d = self.drawBoletoCarne(boletoDados1, y)
         y += d[1] + 6 * mm
         # self._drawHorizontalCorteLine(0, y, d[0])
