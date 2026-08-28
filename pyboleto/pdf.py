@@ -800,6 +800,83 @@ class BoletoPDF(object):
         if boletoDados2:
             self.drawBoletoCarne(boletoDados2, y)
 
+    def drawBoletoCarneTriplo(self, boletoDados1, boletoDados2=None,
+                              boletoDados3=None):
+        """Imprime um boleto tipo carnê com 3 boletos por página.
+
+        O carnê (canhoto + ficha lado a lado) tem ~291mm de largura, então
+        só cabe inteiro em folha *landscape*. Para empilhar 3 numa folha A4
+        em modo retrato (portrait), cada carnê é reduzido por um fator de
+        escala para caber na largura útil da página; a altura reduzida
+        permite os 3 empilhados sem cortar nenhum campo. Construa o
+        ``BoletoPDF`` com ``landscape=False`` (padrão) para este formato.
+
+        Os boletos são desenhados de cima para baixo na ordem dos parâmetros
+        (``boletoDados1`` no topo). ``boletoDados2`` e ``boletoDados3`` são
+        opcionais, permitindo uma última página com 1 ou 2 boletos.
+
+        :param boletoDados1: Objeto com os dados do 1º boleto.
+        :param boletoDados2: Objeto com os dados do 2º boleto.
+        :param boletoDados3: Objeto com os dados do 3º boleto.
+        :type boletoDados1: :class:`pyboleto.data.BoletoData`
+        :type boletoDados2: :class:`pyboleto.data.BoletoData`
+        :type boletoDados3: :class:`pyboleto.data.BoletoData`
+
+        """
+        page_width, page_height = A4
+
+        boletos = [b for b in (boletoDados1, boletoDados2, boletoDados3) if b]
+
+        margem_lateral = 9 * mm
+        espaco_entre_vias = 8 * mm
+
+        # Largura nativa do carnê: margem interna + canhoto + corte + ficha.
+        largura_carne = 15 * mm + self.width_canhoto + 16 * mm + self.width
+        escala = (page_width - 2 * margem_lateral) / largura_carne
+
+        # Altura de um carnê já reduzido (drawBoletoCarne devolve a altura
+        # nativa; multiplicamos pela escala aplicada no canvas).
+        altura_carne = self._alturaCarne() * escala
+        bloco = (len(boletos) * altura_carne +
+                 (len(boletos) - 1) * espaco_entre_vias)
+
+        # Centraliza verticalmente o bloco de boletos na página.
+        y = (page_height - bloco) / 2
+
+        largura_corte = escala * largura_carne
+
+        # Linha de corte abaixo do bloco (mesma folga usada entre os carnês),
+        # para todos os pedaços ficarem do mesmo tamanho.
+        self._drawHorizontalCorteLine(
+            margem_lateral, y - espaco_entre_vias / 2, largura_corte)
+
+        # Desenha de baixo para cima; assim o 1º parâmetro fica no topo.
+        for boleto_dados in reversed(boletos):
+            self.pdf_canvas.saveState()
+            self.pdf_canvas.translate(margem_lateral, y)
+            self.pdf_canvas.scale(escala, escala)
+            self.drawBoletoCarne(boleto_dados, 0)
+            self.pdf_canvas.restoreState()
+            y += altura_carne + espaco_entre_vias
+
+            # Linha de corte tracejada no meio do espaço até o próximo carnê
+            # (e acima do último, fechando o topo do bloco).
+            self._drawHorizontalCorteLine(
+                margem_lateral, y - espaco_entre_vias / 2, largura_corte)
+
+        title = "%s - %s" % (boletoDados1.sacado[0],
+                             boletoDados1.numero_documento)
+        self.pdf_canvas.setTitle(title)
+
+        return (page_width, page_height)
+
+    def _alturaCarne(self):
+        """Altura nativa (sem escala) de um carnê, igual à altura da ficha de
+        compensação (:meth:`_drawReciboCaixa`). A ficha cresce em passos de
+        ``height_line``: 14.5 linhas mais um acréscimo fixo de 10pt embutido
+        no layout. Depende só de ``height_line``, não dos dados do boleto."""
+        return 14.5 * self.height_line + 10
+
     def drawBoletoCarne(self, boleto_dados, y):
         """Imprime apenas dos boletos do carnê.
 
