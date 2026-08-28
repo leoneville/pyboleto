@@ -422,12 +422,18 @@ class BoletoPDF(object):
 
         self.pdf_canvas.restoreState()
 
-    def _drawReciboCaixa(self, boleto_dados, x, y, barcode=True):
+    def _drawReciboCaixa(self, boleto_dados, x, y, barcode=True,
+                         compensacao_barcode=1.0):
         """Imprime o Recibo do Caixa
 
         :param boleto_dados: Objeto com os dados do boleto a ser preenchido.
             Deve ser subclasse de :class:`pyboleto.data.BoletoData`
         :type boleto_dados: :class:`pyboleto.data.BoletoData`
+        :param compensacao_barcode: Fator para ampliar o código de barras no
+            frame local, compensando uma escala aplicada ao canvas para que
+            ele saia no tamanho físico correto (padrão Febraban). Use
+            ``1 / escala`` quando o boleto é desenhado dentro de um canvas
+            reduzido; ``1.0`` (padrão) para tamanho normal.
 
         """
         self.pdf_canvas.saveState()
@@ -774,9 +780,16 @@ class BoletoPDF(object):
             boleto_dados.linha_digitavel
         )
 
-        # Codigo de barras
+        # Codigo de barras. A LARGURA é ampliada por compensacao_barcode para
+        # manter o comprimento físico correto (103mm / barra fina 0.254mm),
+        # o que garante a leitura, mesmo quando o canvas está reduzido por
+        # escala. A ALTURA fica no valor nativo (a leitura não depende dela),
+        # evitando que o código invada o texto acima.
         if barcode:
-            self._codigoBarraI25(boleto_dados.barcode, 2 * self.space, 0)
+            self._codigoBarraI25(
+                boleto_dados.barcode, 2 * self.space, 0,
+                altura=13 * mm,
+                comprimento=103 * mm * compensacao_barcode)
 
         self.pdf_canvas.restoreState()
 
@@ -804,16 +817,9 @@ class BoletoPDF(object):
                               boletoDados3=None):
         """Imprime um boleto tipo carnê com 3 boletos por página.
 
-        O carnê (canhoto + ficha lado a lado) tem ~291mm de largura, então
-        só cabe inteiro em folha *landscape*. Para empilhar 3 numa folha A4
-        em modo retrato (portrait), cada carnê é reduzido por um fator de
-        escala para caber na largura útil da página; a altura reduzida
-        permite os 3 empilhados sem cortar nenhum campo. Construa o
-        ``BoletoPDF`` com ``landscape=False`` (padrão) para este formato.
-
-        Os boletos são desenhados de cima para baixo na ordem dos parâmetros
-        (``boletoDados1`` no topo). ``boletoDados2`` e ``boletoDados3`` são
-        opcionais, permitindo uma última página com 1 ou 2 boletos.
+        Atalho para :meth:`drawBoletoCarneEmpilhado` com 3 vias.
+        ``boletoDados2`` e ``boletoDados3`` são opcionais, permitindo uma
+        última página com 1 ou 2 boletos.
 
         :param boletoDados1: Objeto com os dados do 1º boleto.
         :param boletoDados2: Objeto com os dados do 2º boleto.
@@ -823,9 +829,54 @@ class BoletoPDF(object):
         :type boletoDados3: :class:`pyboleto.data.BoletoData`
 
         """
+        return self.drawBoletoCarneEmpilhado(
+            [boletoDados1, boletoDados2, boletoDados3])
+
+    def drawBoletoCarneQuadruplo(self, boletoDados1, boletoDados2=None,
+                                 boletoDados3=None, boletoDados4=None):
+        """Imprime um boleto tipo carnê com 4 boletos por página.
+
+        Atalho para :meth:`drawBoletoCarneEmpilhado` com 4 vias. Os boletos
+        além do 1º são opcionais, permitindo uma última página incompleta.
+
+        :param boletoDados1: Objeto com os dados do 1º boleto.
+        :param boletoDados2: Objeto com os dados do 2º boleto.
+        :param boletoDados3: Objeto com os dados do 3º boleto.
+        :param boletoDados4: Objeto com os dados do 4º boleto.
+        :type boletoDados1: :class:`pyboleto.data.BoletoData`
+        :type boletoDados2: :class:`pyboleto.data.BoletoData`
+        :type boletoDados3: :class:`pyboleto.data.BoletoData`
+        :type boletoDados4: :class:`pyboleto.data.BoletoData`
+
+        """
+        return self.drawBoletoCarneEmpilhado(
+            [boletoDados1, boletoDados2, boletoDados3, boletoDados4])
+
+    def drawBoletoCarneEmpilhado(self, boletos):
+        """Empilha vários boletos tipo carnê numa folha A4 retrato.
+
+        O carnê (canhoto + ficha lado a lado) tem ~291mm de largura, então
+        só cabe inteiro em folha *landscape*. Para empilhar vários numa folha
+        A4 em modo retrato (portrait), cada carnê é reduzido por um fator de
+        escala para caber na largura útil da página; a altura reduzida
+        permite empilhá-los sem cortar nenhum campo. Construa o ``BoletoPDF``
+        com ``landscape=False`` (padrão) para este formato.
+
+        Os boletos são desenhados de cima para baixo na ordem da lista (o
+        primeiro no topo). Valores ``None`` são ignorados, permitindo uma
+        última página incompleta. Linhas de corte tracejadas são desenhadas
+        no topo, entre cada carnê e na base, para facilitar o corte físico em
+        pedaços de tamanho igual.
+
+        :param boletos: Lista de objetos com os dados de cada boleto
+            (subclasses de :class:`pyboleto.data.BoletoData`); ``None`` é
+            ignorado.
+        """
         page_width, page_height = A4
 
-        boletos = [b for b in (boletoDados1, boletoDados2, boletoDados3) if b]
+        boletos = [b for b in boletos if b]
+        if not boletos:
+            return (page_width, page_height)
 
         margem_lateral = 9 * mm
         espaco_entre_vias = 8 * mm
@@ -850,12 +901,15 @@ class BoletoPDF(object):
         self._drawHorizontalCorteLine(
             margem_lateral, y - espaco_entre_vias / 2, largura_corte)
 
-        # Desenha de baixo para cima; assim o 1º parâmetro fica no topo.
+        # Desenha de baixo para cima; assim o 1º da lista fica no topo.
         for boleto_dados in reversed(boletos):
             self.pdf_canvas.saveState()
             self.pdf_canvas.translate(margem_lateral, y)
             self.pdf_canvas.scale(escala, escala)
-            self.drawBoletoCarne(boleto_dados, 0)
+            # Estica o código de barras na horizontal (1/escala) para que ele
+            # saia com 103mm físicos e permaneça escaneável.
+            self.drawBoletoCarne(boleto_dados, 0,
+                                 compensacao_barcode=1 / escala)
             self.pdf_canvas.restoreState()
             y += altura_carne + espaco_entre_vias
 
@@ -864,8 +918,8 @@ class BoletoPDF(object):
             self._drawHorizontalCorteLine(
                 margem_lateral, y - espaco_entre_vias / 2, largura_corte)
 
-        title = "%s - %s" % (boletoDados1.sacado[0],
-                             boletoDados1.numero_documento)
+        title = "%s - %s" % (boletos[0].sacado[0],
+                             boletos[0].numero_documento)
         self.pdf_canvas.setTitle(title)
 
         return (page_width, page_height)
@@ -877,7 +931,7 @@ class BoletoPDF(object):
         no layout. Depende só de ``height_line``, não dos dados do boleto."""
         return 14.5 * self.height_line + 10
 
-    def drawBoletoCarne(self, boleto_dados, y):
+    def drawBoletoCarne(self, boleto_dados, y, compensacao_barcode=1.0):
         """Imprime apenas dos boletos do carnê.
 
         Esta função não deve ser chamada diretamente, ao invés disso use a
@@ -886,13 +940,17 @@ class BoletoPDF(object):
         :param boleto_dados: Objeto com os dados do boleto a ser preenchido.
             Deve ser subclasse de :class:`pyboleto.data.BoletoData`
         :type boleto_dados: :class:`pyboleto.data.BoletoData`
+        :param compensacao_barcode: Repassado a :meth:`_drawReciboCaixa` para
+            manter o código de barras no tamanho físico correto quando o
+            carnê é desenhado dentro de um canvas reduzido por escala.
         """
         x = 15 * mm
         d = self._draw_recibo_sacado_canhoto(boleto_dados, x, y)
         x += d[0] + 8 * mm
         self._drawVerticalCorteLine(x, y, d[1])
         x += 8 * mm
-        d = self._drawReciboCaixa(boleto_dados, x, y)
+        d = self._drawReciboCaixa(boleto_dados, x, y,
+                                  compensacao_barcode=compensacao_barcode)
         x += d[0]
         return x, d[1]
 
@@ -989,17 +1047,17 @@ class BoletoPDF(object):
             txt = ""
         return txt
 
-    def _codigoBarraI25(self, num, x, y):
+    def _codigoBarraI25(self, num, x, y, altura=13 * mm, comprimento=103 * mm):
         """Imprime Código de barras otimizado para boletos
 
         O código de barras é otmizado para que o comprimento seja sempre o
         estipulado pela Febraban de 103mm.
 
+        :param altura: Altura das barras (padrão 13mm).
+        :param comprimento: Comprimento total do código (padrão 103mm).
+
         """
         # http://en.wikipedia.org/wiki/Interleaved_2_of_5
-
-        altura = 13 * mm
-        comprimento = 103 * mm
 
         thin_bar = 0.254320987654 * mm  # Tamanho correto aproximado
 
