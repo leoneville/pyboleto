@@ -54,7 +54,8 @@ class BoletoPDF(object):
         self.pdf_canvas = canvas.Canvas(file_descr, pagesize=pagesize)
         self.pdf_canvas.setStrokeColor(black)
 
-    def _draw_recibo_sacado_canhoto(self, boleto_dados, x, y):
+    def _draw_recibo_sacado_canhoto(self, boleto_dados, x, y,
+                                    mostrar_rotulo_inferior=True):
         """Imprime o Recibo do Sacado para modelo de carnê
 
         :param boleto_dados: Objeto com os dados do boleto a ser preenchido.
@@ -71,8 +72,11 @@ class BoletoPDF(object):
         linha_inicial = 12
 
         # Horizontal Lines
-        self.pdf_canvas.setLineWidth(2)
-        self.__horizontalLine(0, 0, self.width_canhoto)
+        if mostrar_rotulo_inferior:
+            # Borda inferior do canhoto. Omitida no carnê empilhado, onde o
+            # código de barras full-width ocupa esta faixa.
+            self.pdf_canvas.setLineWidth(2)
+            self.__horizontalLine(0, 0, self.width_canhoto)
 
         self.pdf_canvas.setLineWidth(1)
         self.__horizontalLine(0,
@@ -97,9 +101,18 @@ class BoletoPDF(object):
                             self.height_line)
 
         self.pdf_canvas.setFont('Helvetica-Bold', 6)
-        self.pdf_canvas.drawRightString(self.width_canhoto,
-                                        0 * self.height_line + 3,
-                                        'Recibo do Pagador')
+        if mostrar_rotulo_inferior:
+            # Posição padrão: na base do canhoto.
+            self.pdf_canvas.drawRightString(self.width_canhoto,
+                                            0 * self.height_line + 3,
+                                            'Recibo do Pagador')
+        else:
+            # No carnê empilhado o código de barras full-width cruza a base;
+            # move o rótulo para cima da última linha, fora da faixa do código.
+            self.pdf_canvas.drawRightString(
+                self.width_canhoto,
+                (linha_inicial + 2) * self.height_line + 3,
+                'Recibo do Pagador')
 
         # Titles
         self.pdf_canvas.setFont('Helvetica', 6)
@@ -447,11 +460,21 @@ class BoletoPDF(object):
         self.pdf_canvas.setFont('Helvetica', self.font_size_title)
 
         y = 1.5 * self.height_line
-        self.pdf_canvas.drawRightString(
-            self.width,
-            (1.5 * self.height_line) + self.delta_title - 1,
-            'Autenticação Mecânica / Ficha de Compensação'
-        )
+        if barcode:
+            # Posição padrão: na base, logo acima do código de barras.
+            self.pdf_canvas.drawRightString(
+                self.width,
+                (1.5 * self.height_line) + self.delta_title - 1,
+                'Autenticação Mecânica / Ficha de Compensação'
+            )
+        else:
+            # No carnê empilhado o código full-width ocupa a base; move o
+            # rótulo para cima da faixa do código.
+            self.pdf_canvas.drawRightString(
+                self.width,
+                (2.5 * self.height_line) + self.delta_title - 1,
+                'Autenticação Mecânica / Ficha de Compensação'
+            )
 
         # Primeira linha depois do codigo de barra
         y += self.height_line
@@ -902,7 +925,7 @@ class BoletoPDF(object):
         # laterais ficam o mais justas possível sem que os carnês estourem a
         # altura nem colem uns nos outros.
         margem_lateral_min = 3 * mm
-        espaco_min = 4 * mm
+        espaco_min = 6 * mm
         escala_largura = (page_width - 2 * margem_lateral_min) / largura_carne
         escala_altura = (page_height - n * espaco_min) / (n * altura_nativa)
         escala = min(escala_largura, escala_altura)
@@ -919,12 +942,14 @@ class BoletoPDF(object):
         # Margem lateral resultante (>= mínima): centraliza o bloco na largura.
         margem_lateral = (page_width - escala * largura_carne) / 2
 
-        # Altura das barras (frame local). Mantida abaixo do rótulo
-        # "Autenticação Mecânica..." para o código, agora esticado em toda a
-        # largura, não encostar nele.
-        altura_barcode = 11 * mm
-
         largura_corte = escala * largura_carne
+
+        # Código de barras alinhado à largura do boleto (não à da página),
+        # para não ultrapassar as bordas do carnê. Ainda fica bem largo
+        # (~190mm), com barras grossas (~0,46mm) — leitura robusta em qualquer
+        # impressora. Como cruza a faixa do canhoto, os rótulos daquela faixa
+        # (Recibo do Pagador, Autenticação Mecânica) são omitidos.
+        altura_barcode_pagina = 9.5 * mm
 
         # Translada de forma que o conteúdo (que começa em offset_interno no
         # frame do carnê) fique alinhado à margem esquerda, preenchendo a
@@ -937,12 +962,18 @@ class BoletoPDF(object):
             self.pdf_canvas.saveState()
             self.pdf_canvas.translate(translate_x, y)
             self.pdf_canvas.scale(escala, escala)
-            # Estica o código de barras na horizontal (1/escala) para que ele
-            # saia com 103mm físicos e permaneça escaneável.
-            self.drawBoletoCarne(boleto_dados, 0,
-                                 compensacao_barcode=1 / escala,
-                                 altura_barcode=altura_barcode)
+            # Ficha sem o código de barras (e sem os rótulos da faixa do
+            # código, que seriam cobertos por ele).
+            self.drawBoletoCarne(boleto_dados, 0, barcode=False)
             self.pdf_canvas.restoreState()
+
+            # Código de barras full-width na faixa do rodapé (a ficha reserva
+            # ~13mm ali; usamos essa altura, sem acrescentar espaço).
+            self._codigoBarraI25(
+                boleto_dados.barcode, margem_lateral, y - 1 * mm,
+                altura=altura_barcode_pagina,
+                comprimento=largura_corte)
+
             y += altura_carne + espaco_entre_vias
 
             # Linha de corte tracejada no meio do espaço até o próximo carnê.
@@ -965,7 +996,7 @@ class BoletoPDF(object):
         return 14.5 * self.height_line + 10
 
     def drawBoletoCarne(self, boleto_dados, y, compensacao_barcode=1.0,
-                        altura_barcode=13 * mm):
+                        altura_barcode=13 * mm, barcode=True):
         """Imprime apenas dos boletos do carnê.
 
         Esta função não deve ser chamada diretamente, ao invés disso use a
@@ -979,13 +1010,26 @@ class BoletoPDF(object):
             carnê é desenhado dentro de um canvas reduzido por escala.
         :param altura_barcode: Altura das barras (frame local) repassada a
             :meth:`_drawReciboCaixa`.
+        :param barcode: Quando ``False``, a ficha é desenhada sem o código de
+            barras e sem os rótulos da faixa do código (Recibo do Pagador,
+            Autenticação Mecânica), pois o código é plotado por fora,
+            full-width (ver :meth:`drawBoletoCarneEmpilhado`).
         """
         x = 15 * mm
-        d = self._draw_recibo_sacado_canhoto(boleto_dados, x, y)
+        d = self._draw_recibo_sacado_canhoto(
+            boleto_dados, x, y, mostrar_rotulo_inferior=barcode)
         x += d[0] + 8 * mm
-        self._drawVerticalCorteLine(x, y, d[1])
+        if barcode:
+            self._drawVerticalCorteLine(x, y, d[1])
+        else:
+            # Carnê empilhado: o código de barras full-width ocupa a base;
+            # a linha de corte vertical começa acima dele para não cruzá-lo.
+            base_barcode = 18 * mm
+            self._drawVerticalCorteLine(x, y + base_barcode,
+                                        d[1] - base_barcode)
         x += 8 * mm
         d = self._drawReciboCaixa(boleto_dados, x, y,
+                                  barcode=barcode,
                                   compensacao_barcode=compensacao_barcode,
                                   altura_barcode=altura_barcode)
         x += d[0]
