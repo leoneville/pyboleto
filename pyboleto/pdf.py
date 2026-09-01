@@ -106,9 +106,10 @@ class BoletoPDF(object):
         # rodapé à esquerda, para constar nas duas vias.
         if boleto_dados.codigo_assinatura:
             self.pdf_canvas.setFont('Helvetica-Bold', 8)
-            self.pdf_canvas.drawString(self.space,
-                                       0 * self.height_line + 3,
-                                       boleto_dados.codigo_assinatura)
+            self.pdf_canvas.drawString(
+                self.space,
+                0 * self.height_line + 3,
+                'B: %s' % boleto_dados.codigo_assinatura)
 
         # Titles
         self.pdf_canvas.setFont('Helvetica', 6)
@@ -494,7 +495,7 @@ class BoletoPDF(object):
             self.pdf_canvas.drawRightString(
                 self.width - self.space,
                 y - 14,
-                boleto_dados.codigo_assinatura
+                'B: %s' % boleto_dados.codigo_assinatura
             )
         self.pdf_canvas.setFont('Helvetica', self.font_size_title)
 
