@@ -18,6 +18,8 @@ from reportlab.lib.units import mm, cm
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas
 
+from pyboleto.data import formatar_cpf_cnpj
+
 
 class BoletoPDF(object):
     """Geração do Boleto em PDF
@@ -100,6 +102,13 @@ class BoletoPDF(object):
         self.pdf_canvas.drawRightString(self.width_canhoto,
                                         0 * self.height_line + 3,
                                         'Recibo do Pagador')
+        # Código de assinatura também no canhoto (parte destacável), no
+        # rodapé à esquerda, para constar nas duas vias.
+        if boleto_dados.codigo_assinatura:
+            self.pdf_canvas.setFont('Helvetica-Bold', 8)
+            self.pdf_canvas.drawString(self.space,
+                                       0 * self.height_line + 3,
+                                       boleto_dados.codigo_assinatura)
 
         # Titles
         self.pdf_canvas.setFont('Helvetica', 6)
@@ -333,7 +342,7 @@ class BoletoPDF(object):
         self.pdf_canvas.drawString(
             self.width - (30 * mm) - (35 * mm) + self.space,
             (((linha_inicial + 2) * self.height_line)) + self.space,
-            boleto_dados.cedente_documento
+            formatar_cpf_cnpj(boleto_dados.cedente_documento)
         )
         self.pdf_canvas.drawString(
             self.width - (30 * mm) + self.space,
@@ -475,8 +484,17 @@ class BoletoPDF(object):
         for i in range(len(sacado)):
             self.pdf_canvas.drawString(
                 15 * mm,
-                (y - 10) - (i * self.delta_font),
+                (y - 14) - (i * (self.delta_font + 2)),
                 sacado[i]
+            )
+        # Código de assinatura/autenticação no canto superior direito do
+        # container (mesma altura da 1ª linha do pagador).
+        if boleto_dados.codigo_assinatura:
+            self.pdf_canvas.setFont('Helvetica-Bold', self.font_size_value)
+            self.pdf_canvas.drawRightString(
+                self.width - self.space,
+                y - 14,
+                boleto_dados.codigo_assinatura
             )
         self.pdf_canvas.setFont('Helvetica', self.font_size_title)
 
@@ -713,7 +731,8 @@ class BoletoPDF(object):
 
         self.pdf_canvas.setFont('Helvetica', self.font_size_value)
         beneficiario = '{} - CPF/CNPJ: {}'.format(
-            boleto_dados.cedente, boleto_dados.cedente_documento)
+            boleto_dados.cedente,
+            formatar_cpf_cnpj(boleto_dados.cedente_documento))
         self.pdf_canvas.drawString(0, y + self.space + 10, beneficiario)
         self.pdf_canvas.drawString(0, y + self.space,
                                    boleto_dados.cedente_endereco)

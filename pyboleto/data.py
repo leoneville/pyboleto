@@ -11,11 +11,34 @@
 
 """
 import datetime
+import re
 from decimal import Decimal
 
 
 class BoletoException(Exception):
     pass
+
+
+def formatar_cpf_cnpj(documento):
+    """Formata um CPF (11 dígitos) ou CNPJ (14 dígitos) com máscara.
+
+    - CPF:  ``000.000.000-00``
+    - CNPJ: ``00.000.000/0000-00``
+
+    Se o valor não tiver 11 nem 14 dígitos, é retornado como veio (permite
+    documentos já formatados ou vazios).
+    """
+    if not documento:
+        return documento
+    numeros = re.sub(r'\D', '', str(documento))
+    if len(numeros) == 11:
+        return '{}.{}.{}-{}'.format(
+            numeros[0:3], numeros[3:6], numeros[6:9], numeros[9:11])
+    if len(numeros) == 14:
+        return '{}.{}.{}/{}-{}'.format(
+            numeros[0:2], numeros[2:5], numeros[5:8],
+            numeros[8:12], numeros[12:14])
+    return documento
 
 
 _EPOCH = datetime.date(1997, 10, 7)
@@ -163,6 +186,9 @@ class BoletoData(object):
         self.sacado_endereco = kwargs.pop('sacado_endereco', "")
         self.sacado_bairro = kwargs.pop('sacado_bairro', "")
         self.sacado_cep = kwargs.pop('sacado_cep', "")
+        # Código de assinatura/autenticação exibido acima de "Código de baixa"
+        # na ficha de compensação. Preenchido pelo backend; vazio = não exibe.
+        self.codigo_assinatura = kwargs.pop('codigo_assinatura', "")
         if kwargs:
             raise TypeError("Paramêtro(s) desconhecido: %r" % (kwargs, ))
         self._cedente_endereco = None
@@ -393,9 +419,9 @@ class BoletoData(object):
             raise BoletoException(
                 'Número de linhas de instruções maior que 7')
         for line in list_inst:
-            if len(line) > 90:
+            if len(line) > 100:
                 raise BoletoException(
-                    'Linha de instruções possui mais que 90 caracteres')
+                    'Linha de instruções possui mais que 100 caracteres')
         self._instrucoes = list_inst
     instrucoes = property(_instrucoes_get, _instrucoes_set)
     """Instruções para o caixa do banco que recebe o bilhete
@@ -438,16 +464,21 @@ class BoletoData(object):
 
         """
         if self._sacado is None:
-            self.sacado = [
-                '%s - CPF/CNPJ: %s' % (self.sacado_nome,
-                                       self.sacado_documento),
-                self.sacado_endereco,
-                '%s - %s - %s - %s' % (
+            # Duas linhas: nome + documento em cima, endereço completo embaixo.
+            endereco = ' - '.join(
+                parte for parte in (
+                    self.sacado_endereco,
                     self.sacado_bairro,
                     self.sacado_cidade,
                     self.sacado_uf,
-                    self.sacado_cep
-                )
+                    self.sacado_cep,
+                ) if parte
+            )
+            self.sacado = [
+                '%s - CPF/CNPJ: %s' % (self.sacado_nome,
+                                       formatar_cpf_cnpj(
+                                           self.sacado_documento)),
+                endereco,
             ]
         return self._sacado
 
