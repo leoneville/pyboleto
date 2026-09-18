@@ -879,7 +879,7 @@ class BoletoPDF(object):
         return self.drawBoletoCarneEmpilhado(
             [boletoDados1, boletoDados2, boletoDados3, boletoDados4])
 
-    def drawBoletoCarneEmpilhado(self, boletos):
+    def drawBoletoCarneEmpilhado(self, boletos, margem_seguranca=5 * mm):
         """Empilha vários boletos tipo carnê numa folha A4 retrato.
 
         O carnê (canhoto + ficha lado a lado) tem ~291mm de largura, então
@@ -891,14 +891,25 @@ class BoletoPDF(object):
 
         Os boletos são desenhados de cima para baixo na ordem da lista (o
         primeiro no topo). Valores ``None`` são ignorados, permitindo uma
-        última página incompleta. Linhas de corte tracejadas são desenhadas
-        apenas *entre* os carnês, no meio de cada folga; as margens do topo e
-        da base valem metade da folga entre carnês, de modo que a distância
-        livre até cada linha de corte seja visualmente uniforme na folha.
+        última página incompleta.
+
+        A folha é dividida em ``n`` seções de altura igual
+        (``page_height / n``); as linhas de corte tracejadas ficam nas
+        FRONTEIRAS dessas seções — posições fixas que coincidem com os picotes
+        das folhas pré-perfuradas e NÃO dependem da escala do carnê. Cada
+        carnê é centralizado dentro da sua seção, deixando ``margem_seguranca``
+        livre acima e abaixo. Essa folga garante que o carnê de baixo (código
+        de barras) e o de cima não caiam na zona não-imprimível da impressora
+        (que "come" a borda do papel) — a causa do rodapé do último carnê sair
+        cortado quando o carnê ocupava a seção inteira.
 
         :param boletos: Lista de objetos com os dados de cada boleto
             (subclasses de :class:`pyboleto.data.BoletoData`); ``None`` é
             ignorado.
+        :param margem_seguranca: Folga vertical mínima (em pontos) entre o
+            carnê e a fronteira da seção / borda da folha. Aumente se a
+            impressora ainda cortar a borda; diminua para carnês maiores.
+            Não afeta a posição das linhas de corte.
         """
         page_width, page_height = A4
 
@@ -916,44 +927,45 @@ class BoletoPDF(object):
 
         n = len(boletos)
 
+        # Altura de cada seção (= passo dos picotes). As linhas de corte ficam
+        # nas fronteiras k * altura_secao, invariantes à escala do carnê.
+        altura_secao = page_height / n
+
         # A escala é limitada por dois lados: encher a largura (deixando uma
-        # margem lateral mínima) e caber na altura preservando um espaçamento
-        # vertical mínimo entre os carnês. Usa-se a menor das duas, então as
-        # laterais ficam o mais justas possível sem que os carnês estourem a
-        # altura nem colem uns nos outros.
+        # margem lateral mínima) e caber na seção deixando ``margem_seguranca``
+        # livre em cima e embaixo (para não encostar no picote nem na borda da
+        # folha). Usa-se a menor das duas.
         margem_lateral_min = 3 * mm
-        espaco_min = 4 * mm
         escala_largura = (page_width - 2 * margem_lateral_min) / largura_carne
-        escala_altura = (page_height - n * espaco_min) / (n * altura_nativa)
+        escala_altura = (altura_secao - 2 * margem_seguranca) / altura_nativa
         escala = min(escala_largura, escala_altura)
 
         altura_carne = altura_nativa * escala
 
-        # Espaçamento visualmente uniforme. A linha de corte fica no meio de
-        # cada folga entre carnês, então de cada carnê até a linha há
-        # ``espaco_entre_vias / 2``; as margens do topo e da base valem o
-        # mesmo, deixando a folga uniforme na folha.
-        espaco_entre_vias = (page_height - n * altura_carne) / n
-        margem_topo_base = espaco_entre_vias / 2
+        # Centraliza o carnê dentro da sua seção; a folga acima e abaixo é
+        # igual, no mínimo ``margem_seguranca``.
+        folga_secao = (altura_secao - altura_carne) / 2
 
-        # Margem lateral resultante (>= mínima): centraliza o bloco na largura.
-        margem_lateral = (page_width - escala * largura_carne) / 2
+        # Alinhado à DIREITA: a margem de segurança fica na borda direita e
+        # TODA a folga horizontal sobra à esquerda, reservada para colar
+        # material manualmente após a impressão. (Antes era centralizado.)
+        margem_lateral = page_width - margem_seguranca - escala * largura_carne
 
         # Altura das barras (frame local). Mantida abaixo do rótulo
         # "Autenticação Mecânica..." para o código, agora esticado em toda a
         # largura, não encostar nele.
         altura_barcode = 11 * mm
 
-        largura_corte = escala * largura_carne
-
         # Translada de forma que o conteúdo (que começa em offset_interno no
-        # frame do carnê) fique alinhado à margem esquerda, preenchendo a
-        # largura útil de forma simétrica.
+        # frame do carnê) fique alinhado à margem esquerda calculada acima
+        # (bloco deslocado para a direita).
         translate_x = margem_lateral - offset_interno * escala
 
-        # Desenha de baixo para cima; assim o 1º da lista fica no topo.
-        y = margem_topo_base
+        # Desenha de baixo para cima; assim o 1º da lista fica no topo. A base
+        # da seção ``indice`` é ``indice * altura_secao``; o carnê fica
+        # centralizado nela.
         for indice, boleto_dados in enumerate(reversed(boletos)):
+            y = indice * altura_secao + folga_secao
             self.pdf_canvas.saveState()
             self.pdf_canvas.translate(translate_x, y)
             self.pdf_canvas.scale(escala, escala)
@@ -963,13 +975,6 @@ class BoletoPDF(object):
                                  compensacao_barcode=1 / escala,
                                  altura_barcode=altura_barcode)
             self.pdf_canvas.restoreState()
-            y += altura_carne + espaco_entre_vias
-
-            # Linha de corte tracejada no meio do espaço até o próximo carnê.
-            # Não desenha após o último (a folga do topo já é margem_topo_base).
-            if indice < n - 1:
-                self._drawHorizontalCorteLine(
-                    margem_lateral, y - espaco_entre_vias / 2, largura_corte)
 
         title = "%s - %s" % (boletos[0].sacado[0],
                              boletos[0].numero_documento)
