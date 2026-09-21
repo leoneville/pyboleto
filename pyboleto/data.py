@@ -189,6 +189,11 @@ class BoletoData(object):
         # Código de assinatura/autenticação exibido acima de "Código de baixa"
         # na ficha de compensação. Preenchido pelo backend; vazio = não exibe.
         self.codigo_assinatura = kwargs.pop('codigo_assinatura', "")
+        # Numeração sequencial da parcela no carnê (ex.: 1 de 12). Usada apenas
+        # no canhoto do Recibo do Pagador para ordenar as folhas destacadas.
+        # Vazio/None = não exibe.
+        self.numero_parcela = kwargs.pop('numero_parcela', None)
+        self.total_parcelas = kwargs.pop('total_parcelas', None)
         if kwargs:
             raise TypeError("Paramêtro(s) desconhecido: %r" % (kwargs, ))
         self._cedente_endereco = None

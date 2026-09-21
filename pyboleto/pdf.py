@@ -102,6 +102,16 @@ class BoletoPDF(object):
         self.pdf_canvas.drawRightString(self.width_canhoto,
                                         0 * self.height_line + 3,
                                         'Recibo do Pagador')
+        # Numeração sequencial da folha (1, 2, 3...), apenas para ordenar os
+        # canhotos destacados sem conferir o vencimento. Só o número, sem
+        # "x/12", para não dar impressão de parcela. Centralizado no rodapé,
+        # entre o "B:" (esquerda) e "Recibo do Pagador" (direita).
+        if boleto_dados.numero_parcela:
+            self.pdf_canvas.setFont('Helvetica-Bold', 9)
+            self.pdf_canvas.drawRightString(
+                self.width_canhoto - (35 * mm),
+                0 * self.height_line + 3,
+                '%s' % boleto_dados.numero_parcela)
         # Código de assinatura também no canhoto (parte destacável), no
         # rodapé à esquerda, para constar nas duas vias.
         if boleto_dados.codigo_assinatura:
